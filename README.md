@@ -57,3 +57,7 @@ This protocol comes from the Desky and Jiecang community. Other desks with simil
 
 - `~/desk-control/standup_log.json`: standing and sitting seconds per day
 - `~/desk-control/standup_sessions.csv`: one line for each time in one position
+
+## Licence
+
+MIT licence. See [LICENSE](LICENSE).
