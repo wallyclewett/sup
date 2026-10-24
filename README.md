@@ -33,10 +33,29 @@ To change the app icon, edit `make_icon.swift`, then run `./build_icon.sh` and `
 
 ## Use it with your own desk
 
-The app looks for one desk. Change these two values near the top of `main.swift`:
+The app looks for one desk. Change the two values in `MyDesk`, at the top of `Sources/Desk.swift`:
 
-- `deskID`: your desk's Bluetooth ID on your Mac
-- `"WallyDesk"`: your desk's Bluetooth name
+- `id`: your desk's Bluetooth ID on your Mac
+- `name`: your desk's Bluetooth name
+
+## The code
+
+Each file in `Sources/` does one job. Start with `App.swift`.
+
+| File | What it does |
+|---|---|
+| `App.swift` | Starts the app; left and right clicks on the menu bar icon |
+| `StatusMenu.swift` | The menu you see on a left click |
+| `Desk.swift` | Connects to the desk over Bluetooth and sends commands |
+| `DeskProtocol.swift` | The bytes the desk understands |
+| `Tracker.swift` | Counts standing and sitting time and writes the logs |
+| `AwayWatcher.swift` | Knows when the Mac is locked, in the screen saver or asleep |
+| `Reminder.swift` | The stand-up and sit-down popups |
+| `SettingsView.swift` | The Settings window (SwiftUI) |
+| `Settings.swift` | Saved settings, presets and the daily goal |
+| `Format.swift` | Text for times, dates and heights |
+| `MenuItems.swift`, `MenuViews.swift` | Menu items with icons, the slider and the goal bar |
+| `PaddleIcon.swift` | Draws the menu bar icon |
 
 ## Protocol
 
