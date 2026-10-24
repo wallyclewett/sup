@@ -18,6 +18,7 @@ enum MyDesk {
 /// 3. Once connected, macOS calls the delegate methods at the bottom of this file,
 ///    and `sendPending()` writes the bytes.
 /// 4. After a short time we disconnect again, so the Desky phone app can still connect.
+///    When the menu opens we stay connected for 30 seconds, so a preset or slider click goes at once.
 ///
 /// `ObservableObject` + `@Published` let the menu redraw when the height or status changes.
 final class Desk: NSObject, ObservableObject {
@@ -57,10 +58,14 @@ final class Desk: NSObject, ObservableObject {
 
     /// The command waiting to be sent once we are connected.
     private var pendingPacket: Data?
-    /// True when the pending command moves the desk (it is sent more times, and we stay connected longer).
+    /// True when the pending command moves the desk (it is sent 5 times).
     private var pendingIsMove = false
+    /// How long to stay connected after the pending command is sent.
+    private var pendingStaySeconds: TimeInterval = 3
 
     private var disconnectTimer: DispatchWorkItem?
+    /// When the link will be closed. Used so a short wait never cuts a longer one.
+    private var disconnectAt = Date.distantPast
     private var settleTimer: DispatchWorkItem?
     /// The desk preset we are moving to, so we can learn its height when the desk stops.
     private var movingToPreset: Int?
@@ -70,10 +75,10 @@ final class Desk: NSObject, ObservableObject {
         // Creating the manager starts Bluetooth. Its delegate methods run on the main thread.
         central = CBCentralManager(delegate: self, queue: .main)
 
-        // Ask for a fresh height each time a menu opens, so the menu is up to date.
+        // Each time a menu opens: get a fresh height, and connect now, so a click in the menu is instant.
         NotificationCenter.default.addObserver(forName: NSMenu.didBeginTrackingNotification,
                                                object: nil, queue: .main) { [weak self] _ in
-            self?.refreshHeight()
+            self?.getReady()
         }
     }
 
@@ -94,26 +99,38 @@ final class Desk: NSObject, ObservableObject {
             goTo(cm: cm)
         } else {
             movingToPreset = preset
-            send(packet, isMove: true)
+            send(packet, isMove: true, staySeconds: 20)
         }
     }
 
     /// Move to any height, in cm.
     func goTo(cm: Double) {
         movingToPreset = nil
-        send(DeskProtocol.moveTo(cm: cm), isMove: true)
+        send(DeskProtocol.moveTo(cm: cm), isMove: true, staySeconds: 20)
     }
 
     /// Ask the desk for its height.
     /// Skipped while connected (the desk already sends its height then) or while another command waits.
     func refreshHeight() {
         guard central.state == .poweredOn, pendingPacket == nil, peripheral?.state != .connected else { return }
-        send(DeskProtocol.askHeight, isMove: false)
+        send(DeskProtocol.askHeight, isMove: false, staySeconds: 3)
     }
 
-    private func send(_ packet: Data, isMove: Bool) {
+    /// Called when the menu opens. Connects now (reading the height on the way) and stays connected
+    /// for 30 seconds, so a preset or slider click does not wait for a new connection.
+    func getReady() {
+        let readySeconds: TimeInterval = 30
+        if peripheral?.state == .connected {
+            closeLink(after: readySeconds)  // already connected: just stay longer
+        } else if central.state == .poweredOn, pendingPacket == nil {
+            send(DeskProtocol.askHeight, isMove: false, staySeconds: readySeconds)
+        }
+    }
+
+    private func send(_ packet: Data, isMove: Bool, staySeconds: TimeInterval) {
         pendingPacket = packet
         pendingIsMove = isMove
+        pendingStaySeconds = staySeconds
         connect()
     }
 
@@ -153,15 +170,23 @@ final class Desk: NSObject, ObservableObject {
         }
         if pendingIsMove { status = .moving }
 
-        // Let go of the desk after a while, so the Desky phone app can still connect.
         // Stay longer after a move, so we receive the height reports while the desk moves.
+        closeLink(after: pendingStaySeconds)
+    }
+
+    /// Disconnects after `seconds`, so the Desky phone app can connect again.
+    /// If the link is already planned to stay open longer, that longer time is kept.
+    private func closeLink(after seconds: TimeInterval) {
+        let newTime = Date().addingTimeInterval(seconds)
+        guard newTime > disconnectAt else { return }
+        disconnectAt = newTime
         disconnectTimer?.cancel()
         let disconnect = DispatchWorkItem { [weak self] in
             guard let self = self, let peripheral = self.peripheral else { return }
             self.central.cancelPeripheralConnection(peripheral)
         }
         disconnectTimer = disconnect
-        DispatchQueue.main.asyncAfter(deadline: .now() + (pendingIsMove ? 20 : 3), execute: disconnect)
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: disconnect)
     }
 
     // MARK: - Reports from the desk
@@ -244,6 +269,7 @@ extension Desk: CBCentralManagerDelegate, CBPeripheralDelegate {
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         writeCharacteristic = nil
+        disconnectAt = .distantPast
         if [.moving, .connecting, .searching].contains(status) { status = .idle }
     }
 

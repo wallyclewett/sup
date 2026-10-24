@@ -3,7 +3,7 @@ import AppKit
 /// A slider inside a menu, like the volume slider in the macOS Sound menu: icon, slider, icon, value.
 ///
 /// `onRelease` runs once, when you let go. Inside a menu, macOS does not always report the
-/// mouse-up event, so we check the mouse button ourselves every 0.3 seconds while you drag.
+/// mouse-up event, so we check the mouse button ourselves every 0.1 seconds while you drag.
 final class MenuSlider: NSView {
     private let slider: NSSlider
     private let valueLabel = NSTextField(labelWithString: "")
@@ -64,7 +64,7 @@ final class MenuSlider: NSView {
             }
         }
         releaseCheck = check
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: check)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: check)
     }
 }
 
